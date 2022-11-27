@@ -154,11 +154,9 @@ func (a *Addon) streamPodLog(ctx context.Context, pod string) error {
 	scanner := bufio.NewScanner(a.streams[pod])
 	for scanner.Scan() {
 		logmsg := scanner.Text()
-		if bln := regexfilter.MatchString(logmsg); bln {
-			trimleftall := logmsg[strings.Index(logmsg, "{")+1:]
-			trimrightall := trimleftall[:strings.Index(trimleftall, "}")]
+		if regexfilter.MatchString(logmsg) {
 			eventattr := make(map[string]string)
-			for _, e := range strings.Split(trimrightall, ", ") {
+			for _, e := range trimSplit(logmsg) {
 				kv := strings.Split(e, ":")
 				eventattr[kv[0]] = strings.Trim(kv[1], "\"")
 			}
@@ -174,6 +172,13 @@ func (a *Addon) streamPodLog(ctx context.Context, pod string) error {
 	}
 
 	return nil
+}
+
+func trimSplit(logmsg string) []string {
+	trimmedLeftAll := logmsg[strings.Index(logmsg, "{")+1:]
+	trimmedRightAll := trimmedLeftAll[:strings.Index(trimmedLeftAll, "}")]
+
+	return strings.Split(trimmedRightAll, ", ")
 }
 
 func (a *Addon) copySecrets(ctx context.Context, secret string) error {
