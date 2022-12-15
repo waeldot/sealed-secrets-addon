@@ -29,6 +29,7 @@ type Addon struct {
 	destinationNamespace string
 }
 
+// factory functions to create new addon instance.
 func NewAddon(fs *flag.FlagSet) *Addon {
 	state := make(chan string, 1)
 	config, err := rest.InClusterConfig()
@@ -58,6 +59,8 @@ func NewAddon(fs *flag.FlagSet) *Addon {
 	}
 }
 
+// main loop of addon instance.
+// it start main procedure then wait for next signal through channel.
 func (a *Addon) Run(ctx context.Context) {
 	log.Printf("started sealed-secrets-addon.")
 	*a.state <- "running"
@@ -72,6 +75,7 @@ outer:
 				log.Printf("error on starting loop, %v", err)
 				break outer
 			}
+			// to prevent from executong validator repeatedly
 			go once.Do(func() {
 				a.validateSecrets(ctx)
 			})
@@ -83,6 +87,10 @@ outer:
 	}
 }
 
+// this procedure executes below functions sequentially,
+// 1. getPods
+// 2. getPodLog
+// 3. streamPodLog
 func (a *Addon) startProcedure(ctx context.Context) error {
 	deploy, err := a.clientset.AppsV1().Deployments(a.sourceNamespace).Get(ctx, a.controllerName, metav1.GetOptions{})
 	if err != nil {
@@ -117,6 +125,7 @@ func (a *Addon) startProcedure(ctx context.Context) error {
 	return nil
 }
 
+// this fucntion gets pods of targeted sealed-secrets-controller.
 func (a *Addon) getPods(ctx context.Context, regexfilter *regexp.Regexp) []string {
 	pods, err := a.clientset.CoreV1().Pods(a.sourceNamespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -134,6 +143,7 @@ func (a *Addon) getPods(ctx context.Context, regexfilter *regexp.Regexp) []strin
 	return found
 }
 
+// this fucntion gets pod's log as stream from the the pods.
 func (a *Addon) getPodLog(ctx context.Context, pod string) error {
 	request := a.clientset.CoreV1().Pods(a.sourceNamespace).GetLogs(pod, &corev1.PodLogOptions{Container: "sealed-secrets-controller", Follow: true})
 	stream, err := request.Stream(ctx)
@@ -145,6 +155,8 @@ func (a *Addon) getPodLog(ctx context.Context, pod string) error {
 	return nil
 }
 
+// this fucntion keeps scanning log streams of the the pods.
+// when decrypted secret found, it executes copySecrets function.
 func (a *Addon) streamPodLog(ctx context.Context, pod string) error {
 	log.Printf("scanning log stream of %v", pod)
 	regexfilter, err := regexp.Compile("SealedSecret unsealed successfully")
@@ -165,6 +177,9 @@ func (a *Addon) streamPodLog(ctx context.Context, pod string) error {
 	}
 
 	log.Printf("log stream of %v closed.", pod)
+
+	// to clean up the log stream of deleted pod.
+	// pod deletion can happen when rolling update or terminating addon instance.
 	delete(a.streams, pod)
 	if ctx.Err() == nil {
 		log.Printf("start Procedure again.")
@@ -174,6 +189,7 @@ func (a *Addon) streamPodLog(ctx context.Context, pod string) error {
 	return nil
 }
 
+// this fucntion trims and splits log messages to convert it as map type.
 func trimSplit(logmsg string) []string {
 	trimmedLeftAll := logmsg[strings.Index(logmsg, "{")+1:]
 	trimmedRightAll := trimmedLeftAll[:strings.Index(trimmedLeftAll, "}")]
@@ -181,6 +197,7 @@ func trimSplit(logmsg string) []string {
 	return strings.Split(trimmedRightAll, ", ")
 }
 
+// this fucntion copies decrypted secret to make new independent secret.
 func (a *Addon) copySecrets(ctx context.Context, secret string) error {
 	origin, err := a.clientset.CoreV1().Secrets(a.sourceNamespace).Get(ctx, secret, metav1.GetOptions{})
 	if err != nil {
@@ -192,7 +209,11 @@ func (a *Addon) copySecrets(ctx context.Context, secret string) error {
 	if _, exist := origin.Labels["TargetNamespace"]; exist {
 		dstns = origin.Labels["TargetNamespace"]
 	}
+
+	// it checks whether create new onw or updated already made one
+	// and provide copy result in log messages to help manage the addon.
 	oldCopyExists := true
+	// to get previous copied secret info.
 	oldCopy, err := a.clientset.CoreV1().Secrets(dstns).Get(ctx, secret, metav1.GetOptions{})
 	if err != nil {
 		oldCopyExists = false
@@ -200,12 +221,13 @@ func (a *Addon) copySecrets(ctx context.Context, secret string) error {
 	newCopyData := confv1.Secret(origin.Name, dstns)
 	newCopyData.WithLabels(origin.Labels)
 	newCopyData.WithData(origin.Data)
+	// to make new copied secret and get its info.
 	newCopy, err := a.clientset.CoreV1().Secrets(dstns).Apply(ctx, newCopyData, metav1.ApplyOptions{FieldManager: "sealed-secrets-addon"})
 	if err != nil {
 		log.Printf("tried to copy but %v", err)
 		return err
 	}
-
+	// to get copy result.
 	result := "created"
 	if oldCopyExists {
 		result = "updated"
@@ -219,6 +241,7 @@ func (a *Addon) copySecrets(ctx context.Context, secret string) error {
 	return nil
 }
 
+// this fucntion validate all copied secrets to ensure data integration
 func (a *Addon) validateSecrets(ctx context.Context) {
 	for ctx.Err() == nil {
 		secrets, err := a.clientset.CoreV1().Secrets(a.sourceNamespace).List(ctx, metav1.ListOptions{FieldSelector: "type=opaque"})
@@ -241,10 +264,12 @@ func (a *Addon) validateSecrets(ctx context.Context) {
 			}
 		}
 
+		// to make interval period.
 		time.Sleep((time.Minute))
 	}
 }
 
+// this function is responsible for closing log streams when SIGTERM received.
 func (a *Addon) handleStreams(ctx context.Context) {
 	for pod, stream := range a.streams {
 		log.Printf("closing log stream of %v", pod)
@@ -254,5 +279,6 @@ func (a *Addon) handleStreams(ctx context.Context) {
 		}
 	}
 
+	// to wait for closing streams completely.
 	time.Sleep(time.Second * 3)
 }

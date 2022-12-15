@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// this http server provides an endpoint for liveness probe and readiness probe.
 func RunHTTPServer() *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
