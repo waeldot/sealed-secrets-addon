@@ -29,7 +29,7 @@ type Addon struct {
 	destinationNamespace string
 }
 
-// factory functions to create new addon instance.
+// factory function to create new addon instance.
 func NewAddon(fs *flag.FlagSet) *Addon {
 	state := make(chan string, 1)
 	config, err := rest.InClusterConfig()
@@ -60,7 +60,7 @@ func NewAddon(fs *flag.FlagSet) *Addon {
 }
 
 // main loop of addon instance.
-// it start main procedure then wait for next signal through channel.
+// it starts main procedure then wait for next signal through channel.
 func (a *Addon) Run(ctx context.Context) {
 	log.Printf("started sealed-secrets-addon.")
 	*a.state <- "running"
@@ -75,7 +75,7 @@ outer:
 				log.Printf("error on starting loop, %v", err)
 				break outer
 			}
-			// to prevent from executong validator repeatedly
+			// to prevent from executing validator repeatedly
 			go once.Do(func() {
 				a.validateSecrets(ctx)
 			})
@@ -210,7 +210,7 @@ func (a *Addon) copySecrets(ctx context.Context, secret string) error {
 		dstns = origin.Labels["TargetNamespace"]
 	}
 
-	// it checks whether create new onw or updated already made one
+	// it checks whether create new one or update already made one
 	// and provide copy result in log messages to help manage the addon.
 	oldCopyExists := true
 	// to get previous copied secret info.
@@ -241,7 +241,7 @@ func (a *Addon) copySecrets(ctx context.Context, secret string) error {
 	return nil
 }
 
-// this fucntion validate all copied secrets to ensure data integration
+// this fucntion validates all copied secrets to ensure data integration
 func (a *Addon) validateSecrets(ctx context.Context) {
 	for ctx.Err() == nil {
 		secrets, err := a.clientset.CoreV1().Secrets(a.sourceNamespace).List(ctx, metav1.ListOptions{FieldSelector: "type=opaque"})

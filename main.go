@@ -20,7 +20,7 @@ var (
 
 // main function executes below loops,
 // 1. http server for probe
-// 2. sigterm handler
+// 2. SIGTERM handler
 // 3. sealed-secret-addon main loop
 func main() {
 	buildinfo.FallbackVersion(&VERSION, buildinfo.DefaultVersion)
