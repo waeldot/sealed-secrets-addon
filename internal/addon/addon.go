@@ -87,7 +87,7 @@ outer:
 	}
 }
 
-// this procedure executes below functions sequentially,
+// this procedure executes functions below sequentially,
 // 1. getPods
 // 2. getPodLog
 // 3. streamPodLog

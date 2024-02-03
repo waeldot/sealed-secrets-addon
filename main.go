@@ -7,25 +7,27 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/waeldot/sealed-secrets-addon/internal/addon"
+
 	flag "github.com/spf13/pflag"
-
-	"platform/k8s/sealed-secrets-addon/pkg/addon"
-	"platform/k8s/sealed-secrets-addon/pkg/buildinfo"
 )
 
-// set addon version from Makefile, default: UNKNOWN
-var (
-	VERSION = buildinfo.DefaultVersion
-)
+// when SIGTERM received,
+// this handler notifies goroutines for graceful shutdown.
+func handleSigterm(cancel context.CancelFunc) {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGTERM)
+	<-signals
 
-// main function executes below loops,
-// 1. http server for probe
+	log.Printf("received SIGTERM. terminating...")
+	cancel()
+}
+
+// main function executes 3 loops below,
+// 1. http server for probing
 // 2. SIGTERM handler
 // 3. sealed-secret-addon main loop
 func main() {
-	buildinfo.FallbackVersion(&VERSION, buildinfo.DefaultVersion)
-	log.Printf("sealed-secrets-addon version: %s", VERSION)
-
 	http := addon.RunHTTPServer()
 	ctx, cancel := context.WithCancel(context.Background())
 	go handleSigterm(cancel)
@@ -34,15 +36,4 @@ func main() {
 
 	http.Shutdown(ctx)
 	log.Println("terminated http server.")
-}
-
-// when SIGTERM received,
-// this handler notify goroutines for graceful shutdown.
-func handleSigterm(cancel context.CancelFunc) {
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, syscall.SIGTERM)
-	<-signals
-
-	log.Printf("received SIGTERM. terminating...")
-	cancel()
 }

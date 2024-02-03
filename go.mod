@@ -1,4 +1,4 @@
-module platform/k8s/sealed-secrets-addon
+module github.com/waeldot/sealed-secrets-addon
 
 go 1.19
 
